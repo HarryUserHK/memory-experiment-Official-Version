@@ -1,0 +1,412 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory Experiment</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f2f5fa;
+  margin: 0;
+  padding: 20px;
+  color: #202938;
+}
+.container {
+  max-width: 750px;
+  margin: 25px auto;
+  background: white;
+  padding: 25px;
+  border-radius: 14px;
+  box-shadow: 0 3px 15px #0001;
+}
+h1, h2 { color: #183b65; }
+button, select {
+  padding: 12px 17px;
+  border-radius: 7px;
+  border: 1px solid #bbb;
+  font-size: 16px;
+  margin: 6px 4px 6px 0;
+}
+button {
+  background: #245b9b;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+button:disabled { opacity: .5; }
+button.secondary { background: #536579; }
+.hidden { display: none; }
+.question {
+  padding: 12px;
+  background: #f5f7fa;
+  margin: 12px 0;
+  border-radius: 8px;
+}
+input[type="text"] {
+  width: 95%;
+  padding: 10px;
+  margin-top: 8px;
+  border: 1px solid #aaa;
+  border-radius: 6px;
+  font-size: 16px;
+}
+.status {
+  padding: 12px;
+  background: #eef3f8;
+  border-radius: 8px;
+  margin: 15px 0;
+}
+#timer {
+  font-size: 24px;
+  font-weight: bold;
+  color: #245b9b;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Memory Experiment</h1>
+  <p>This experiment investigates how background sound affects memory.</p>
+
+  <section id="setup">
+    <h2>Before you begin</h2>
+    <p>Select the group assigned to you by the researcher.</p>
+
+    <select id="group">
+      <option value="A">Group A – Silence</option>
+      <option value="B">Group B – Background Noise</option>
+    </select>
+
+    <div class="status" id="soundStatus">
+      Sound has not been tested yet.
+    </div>
+
+    <button onclick="testNoise()">Test Noise</button>
+    <button class="secondary" onclick="stopNoise()">Stop Test Noise</button>
+
+    <p><small>For Group B, use headphones or speakers and set a comfortable volume. Group A should remain in a quiet environment.</small></p>
+
+    <button onclick="startExperiment()">Start Experiment</button>
+  </section>
+
+  <section id="stage1" class="hidden">
+    <h2>Stage 1 – Memorise the Information</h2>
+    <p>Study the following information carefully. You will have 2 minutes.</p>
+    <div class="status">Time remaining: <span id="timer">120</span> seconds</div>
+
+    <ul>
+      <li>Event: School Sports Day</li>
+      <li>Date: Friday 7 June</li>
+      <li>Location: Greenfield Oval</li>
+      <li>Start time: 9:30 am</li>
+      <li>Teams: Red, Blue, Green and Yellow</li>
+      <li>Relay winner: Blue</li>
+      <li>Tug-of-war winner: Green</li>
+      <li>Lunch: Sandwiches and apples</li>
+      <li>Weather: Sunny and warm</li>
+      <li>Principal: Mr Taylor</li>
+      <li>Student prize: Certificate</li>
+    </ul>
+    <p>Try to remember as much information as possible.</p>
+  </section>
+
+  <section id="stage2" class="hidden">
+    <h2>Stage 2 – Maths Distractor Task</h2>
+    <p>Answer all 12 questions. You have 2 minutes.</p>
+    <div class="status">Time remaining: <span id="timer2">120</span> seconds</div>
+    <div id="mathQuestions"></div>
+  </section>
+
+  <section id="stage3" class="hidden">
+    <h2>Stage 3 – Memory Test</h2>
+    <p>Answer the questions using only what you remember.</p>
+    <div id="memoryQuestions"></div>
+    <button onclick="finishExperiment()">Submit Memory Test</button>
+  </section>
+
+  <section id="results" class="hidden">
+    <h2>Your Results</h2>
+    <div id="resultText"></div>
+    <button onclick="downloadCSV()">Download Results (CSV)</button>
+    <button class="secondary" onclick="location.reload()">Finish</button>
+  </section>
+</div>
+
+<script>
+let audioContext = null;
+let noiseSource = null;
+let gainNode = null;
+let currentGroup = "A";
+let timerInterval = null;
+let testTimeout = null;
+let stage1Answers = [];
+let stage2Answers = [];
+let stage3Answers = [];
+let results = {};
+let experimentStarted = false;
+
+const maths = [
+  [ "8 + 7", 15 ],
+  [ "24 - 9", 15 ],
+  [ "6 × 4", 24 ],
+  [ "42 ÷ 6", 7 ],
+  [ "19 + 13", 32 ],
+  [ "50 - 27", 23 ],
+  [ "7 × 8", 56 ],
+  [ "81 ÷ 9", 9 ],
+  [ "36 + 18", 54 ],
+  [ "100 - 64", 36 ],
+  [ "9 × 5", 45 ],
+  [ "72 ÷ 8", 9 ]
+];
+
+const memory = [
+  { q: "What was the event called?", a: "School Sports Day" },
+  { q: "What was the date?", a: "Friday 7 June" },
+  { q: "Where was the event held?", a: "Greenfield Oval" },
+  { q: "What time did it start?", a: "9:30 am" },
+  { q: "Which team won the relay?", a: "Blue" },
+  { q: "Which team won tug-of-war?", a: "Green" },
+  { q: "What was served for lunch?", a: "Sandwiches and apples" },
+  { q: "What was the weather like?", a: "Sunny and warm" },
+  { q: "Who was the principal?", a: "Mr Taylor" },
+  { q: "What was the student prize?", a: "Certificate" }
+];
+
+function updateSoundStatus(message) {
+  document.getElementById("soundStatus").textContent = message;
+}
+
+async function startNoise() {
+  stopNoise();
+
+  const AudioClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioClass) {
+    throw new Error("This browser does not support Web Audio.");
+  }
+
+  audioContext = new AudioClass();
+
+  if (audioContext.state === "suspended") {
+    await audioContext.resume();
+  }
+
+  // Generate continuous filtered background noise.
+  const buffer = audioContext.createBuffer(
+    1,
+    audioContext.sampleRate * 3,
+    audioContext.sampleRate
+  );
+
+  const data = buffer.getChannelData(0);
+  let previous = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const white = Math.random() * 2 - 1;
+    previous = previous * 0.85 + white * 0.15;
+    data[i] = previous * 0.8;
+  }
+
+  noiseSource = audioContext.createBufferSource();
+  noiseSource.buffer = buffer;
+  noiseSource.loop = true;
+
+  const filter = audioContext.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 1800;
+
+  gainNode = audioContext.createGain();
+  gainNode.gain.value = 0.10;
+
+  noiseSource.connect(filter);
+  filter.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  noiseSource.start();
+
+  updateSoundStatus("Background noise is playing.");
+}
+
+function stopNoise() {
+  if (noiseSource) {
+    try { noiseSource.stop(); } catch (e) {}
+    try { noiseSource.disconnect(); } catch (e) {}
+    noiseSource = null;
+  }
+
+  if (audioContext) {
+    const oldContext = audioContext;
+    audioContext = null;
+    oldContext.close().catch(() => {});
+  }
+
+  gainNode = null;
+}
+
+async function testNoise() {
+  clearTimeout(testTimeout);
+
+  try {
+    await startNoise();
+    updateSoundStatus("Test noise is playing for 5 seconds.");
+    testTimeout = setTimeout(() => {
+      stopNoise();
+      updateSoundStatus("Test finished. You can start the experiment.");
+    }, 5000);
+  } catch (error) {
+    updateSoundStatus("Audio could not start: " + error.message);
+    alert("Audio could not start. Try using Chrome and check your volume.");
+  }
+}
+
+function showSection(id) {
+  ["setup", "stage1", "stage2", "stage3", "results"].forEach(section => {
+    document.getElementById(section).classList.add("hidden");
+  });
+  document.getElementById(id).classList.remove("hidden");
+}
+
+async function startExperiment() {
+  clearTimeout(testTimeout);
+  currentGroup = document.getElementById("group").value;
+
+  if (currentGroup === "B") {
+    try {
+      await startNoise();
+      updateSoundStatus("Group B: background noise is playing throughout the experiment.");
+    } catch (error) {
+      alert("The audio could not start. Please test your sound again before continuing.");
+      return;
+    }
+  } else {
+    stopNoise();
+    updateSoundStatus("Group A: silence condition.");
+  }
+
+  experimentStarted = true;
+  showSection("stage1");
+  runTimer(120, "timer", startStage2);
+}
+
+function runTimer(seconds, elementId, callback) {
+  clearInterval(timerInterval);
+  let remaining = seconds;
+  document.getElementById(elementId).textContent = remaining;
+
+  timerInterval = setInterval(() => {
+    remaining--;
+    document.getElementById(elementId).textContent = remaining;
+
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      callback();
+    }
+  }, 1000);
+}
+
+function startStage2() {
+  showSection("stage2");
+  const container = document.getElementById("mathQuestions");
+  container.innerHTML = "";
+
+  maths.forEach((item, i) => {
+    container.innerHTML += `
+      <div class="question">
+        <label>${i + 1}. ${item[0]} = </label>
+        <input type="number" id="math${i}">
+      </div>`;
+  });
+
+  runTimer(120, "timer2", startStage3);
+}
+
+function startStage3() {
+  clearInterval(timerInterval);
+  showSection("stage3");
+  const container = document.getElementById("memoryQuestions");
+  container.innerHTML = "";
+
+  memory.forEach((item, i) => {
+    container.innerHTML += `
+      <div class="question">
+        <label>${i + 1}. ${item.q}</label>
+        <input type="text" id="memory${i}" autocomplete="off">
+      </div>`;
+  });
+}
+
+function normalise(value) {
+  return String(value || "").trim().toLowerCase().replace(/[.,!?]/g, "").replace(/\s+/g, " ");
+}
+
+function finishExperiment() {
+  if (!experimentStarted) return;
+
+  clearInterval(timerInterval);
+  stage2Answers = maths.map((item, i) =>
+    document.getElementById("math" + i)?.value || ""
+  );
+  stage3Answers = memory.map((item, i) =>
+    document.getElementById("memory" + i)?.value || ""
+  );
+
+  const mathsScore = maths.reduce((score, item, i) =>
+    score + (Number(stage2Answers[i]) === item[1] ? 1 : 0), 0);
+
+  const recallScore = memory.slice(0, 6).reduce((score, item, i) =>
+    score + (normalise(stage3Answers[i]) === normalise(item.a) ? 1 : 0), 0);
+
+  const recognitionScore = memory.slice(6).reduce((score, item, i) =>
+    score + (normalise(stage3Answers[i + 6]) === normalise(item.a) ? 1 : 0), 0);
+
+  const totalMemory = recallScore + recognitionScore;
+
+  results = {
+    group: currentGroup,
+    mathsScore,
+    recallScore,
+    recognitionScore,
+    totalMemory,
+    date: new Date().toLocaleString()
+  };
+
+  stopNoise();
+  updateSoundStatus("Experiment completed. Audio stopped.");
+
+  document.getElementById("resultText").innerHTML = `
+    <p><strong>Group:</strong> ${currentGroup}</p>
+    <p><strong>Maths score:</strong> ${mathsScore}/12</p>
+    <p><strong>Free recall:</strong> ${recallScore}/6</p>
+    <p><strong>Recognition:</strong> ${recognitionScore}/4</p>
+    <p><strong>Total memory score:</strong> ${totalMemory}/10</p>
+    <p><strong>Date:</strong> ${results.date}</p>
+    <p>Download your results and give the file to the researcher.</p>
+  `;
+
+  showSection("results");
+}
+
+function downloadCSV() {
+  const rows = [
+    ["Group", "Maths Score", "Recall Score", "Recognition Score", "Total Memory Score", "Date"],
+    [results.group, results.mathsScore, results.recallScore,
+     results.recognitionScore, results.totalMemory, results.date]
+  ];
+
+  const csv = rows.map(row => row.map(value =>
+    '"' + String(value).replace(/"/g, '""') + '"'
+  ).join(",")).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "memory-experiment-results.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
